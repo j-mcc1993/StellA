@@ -1,9 +1,18 @@
-import serial, requests
+import asyncio
+import platform
+import requests
+import serial
+import struct
+from bleak import BleakClient, BleakError
 
-# Locals
+# For establishing bluetooth connection
+char_uuid = "19b10001-e8f2-537e-4f6c-d104768a1214"
+mac_addr = "E5DD24C3-3942-453F-91E5-5568D1BB4908"
+
+# Globals
 pi  = 3.14159
 rad = pi/180.0
-tol = 0.025
+bp  = 4
 
 # Position vector
 azAlt = {'az' : pi, 'alt' : 0.0}
@@ -12,33 +21,43 @@ azAlt = {'az' : pi, 'alt' : 0.0}
 def updateView():
     requests.post("http://localhost:8090/api/main/view", data=azAlt)
 
-# Initialize serial connection with Arduino
-arduino = serial.Serial('/dev/cu.usbmodem14201', 9600, timeout=1)
+# Handles updates to azAlt data
+def notification_handler(sender, data):
+    az  = float(struct.unpack('f', data[:bp])[0])
+    alt = float(struct.unpack('f', data[bp:])[0])
+    print("az: " + str(az) + "    alt: " + str(alt))
 
-# Initialize Stellarium view
-updateView()
+    # Convert to radians
+    az  *= rad
+    alt *= rad
+    azAlt['az']  = az
+    azAlt['alt'] = alt
 
-# Loop to read Arduino sensor and update view 
-while True:
-    data = arduino.readline()[:-2] # remove newlines
-    if data:
-        data = data.decode('utf8') # translate raw bytes to str
-        data = [round(float(x)*rad, 2) for x in data.split()]
+    # Update Stellarium view
+    updateView()
+    
 
-        # Check if there's been a read-error
-        if len(data) != 2:
-            print("Error! Incomplete line of data read")
-            continue
-
-        # Display alt az to console for debugging
-        print("az: " + str(data[0]) + "  alt: " + str(data[1]))
+# Establish BLE connection and loop continuously
+async def get_azAlt(mac_addr: str, loop: asyncio.AbstractEventLoop):
+    async with BleakClient(mac_addr, loop=loop) as client:
+        # Ensure connection is established
+        x = await client.is_connected()
         
-        # If full line of data was read, obtain alt/az values
-        delt_az  = abs(azAlt['az'] - data[0])
-        delt_alt = abs(azAlt['alt'] - data[1])
+        # Enable notification and assign handler
+        await client.start_notify(char_uuid, notification_handler)
 
-        # If delta is large enough, update the view
-        if delt_az > tol or delt_alt > tol:
-            azAlt['az']  = data[0]
-            azAlt['alt'] = data[1]
-            updateView()
+        # Wait for notifications
+        while True:
+            await asyncio.sleep(15.0, loop=loop)
+
+
+try:
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(get_azAlt(mac_addr, loop))
+    loop.run_forever()
+except KeyboardInterrupt:
+    loop.stop()
+    print("\nExiting...")
+except BleakError:
+    loop.stop()
+    print("\nDevice couldn't be found, please reset and try again\n")
