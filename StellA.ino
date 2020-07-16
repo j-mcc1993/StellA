@@ -24,6 +24,7 @@ float gx, gy, gz;
 float accelScale, gyroScale;
 float azAlt[2]{0.0, 0.0};
 const int SAMPLE_RATE = 50;
+const float TOL = 0.5;
 unsigned long microsNow, microsPerReading, microsPrevious;
 
 
@@ -108,17 +109,21 @@ void loop() {
         gy = convertRawGyro(giy);
         gz = convertRawGyro(giz);
 
+        // Critical section
+        noInterrupts();
+        
         // Update the filter
         filter.updateIMU(gx, gy, gz, ax, ay, az);
 
         // If sensor data has changed significantly, update and notify central
-        if (abs(azAlt[0] - filter.getYaw()) > 1.0 || abs(azAlt[1] + filter.getPitch()) > 1.0) {
+        if (abs(azAlt[0] - filter.getYaw()) > TOL || abs(azAlt[1] + filter.getPitch()) > TOL) {
           azAlt[0] = filter.getYaw();
           azAlt[1] = -filter.getPitch();
-          noInterrupts();
           azCharacteristic.setValue((unsigned char *)azAlt, DATA_LENGTH);
-          interrupts();
         }
+
+        // End critical section
+        interrupts();
         
         // Increment previous time, so we keep proper pace
         microsPrevious = microsPrevious + microsPerReading;

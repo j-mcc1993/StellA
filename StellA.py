@@ -7,13 +7,14 @@ from bleak import BleakClient, BleakError
 
 # For establishing bluetooth connection
 char_uuid = "19b10001-e8f2-537e-4f6c-d104768a1214"
-mac_addr = "E5DD24C3-3942-453F-91E5-5568D1BB4908"
+dev_uuid  = "E5DD24C3-3942-453F-91E5-5568D1BB4908"
 
 # Globals
 pi    = 3.14159
 rad   = pi/180.0
-bp    = 4
+brkpt = 4
 north = 37.385050 
+delay = 60.0
 
 # Position vector
 azAlt = {'az' : pi, 'alt' : north}
@@ -24,9 +25,9 @@ def updateView():
 
 # Handles updates to azAlt data
 def notification_handler(sender, data):
-    az  = float(struct.unpack('f', data[:bp])[0])
-    alt = float(struct.unpack('f', data[bp:])[0])
-    print("az: " + str(az) + "    alt: " + str(alt))
+    az  = float(struct.unpack('f', data[:brkpt])[0])
+    alt = float(struct.unpack('f', data[brkpt:])[0])
+    print("az: " + str(round(az,1)) + "    alt: " + str(round(alt,1)))
 
     # Convert to radians
     az  *= rad
@@ -39,26 +40,25 @@ def notification_handler(sender, data):
     
 
 # Establish BLE connection and loop continuously
-async def get_azAlt(mac_addr: str, loop: asyncio.AbstractEventLoop):
-    async with BleakClient(mac_addr, loop=loop) as client:
+async def get_azAlt(dev_uuid: str, loop: asyncio.AbstractEventLoop):
+    async with BleakClient(dev_uuid, loop=loop) as client:
         # Ensure connection is established
-        x = await client.is_connected()
+        await client.is_connected()
         
         # Enable notification and assign handler
         await client.start_notify(char_uuid, notification_handler)
 
         # Wait for notifications
         while True:
-            await asyncio.sleep(15.0, loop=loop)
+            await asyncio.sleep(delay)
 
 
 try:
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(get_azAlt(mac_addr, loop))
-    loop.run_forever()
+    loop.run_until_complete(get_azAlt(dev_uuid, loop))
 except KeyboardInterrupt:
     loop.stop()
     print("\nExiting...")
 except BleakError:
     loop.stop()
-    print("\nDevice couldn't be found, please reset and try again\n")
+    print("\nDevice couldn't be found, please reset and try again.\n")
