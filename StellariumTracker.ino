@@ -96,7 +96,9 @@ void loop() {
       if (microsNow - microsPrevious >= microsPerReading) {
 
         // Read raw data from CurieIMU
+        noInterrupts();
         CurieIMU.readMotionSensor(aix, aiy, aiz, gix, giy, giz);
+        interrupts();
 
         // Convert from raw data to gravity and degrees/second units
         ax = convertRawAcceleration(aix);
@@ -110,10 +112,12 @@ void loop() {
         filter.updateIMU(gx, gy, gz, ax, ay, az);
 
         // If sensor data has changed significantly, update and notify central
-        if (abs(azAlt[0] - filter.getYaw()) > 1.0 || abs(azAlt[1] - filter.getPitch()) > 1.0) {
+        if (abs(azAlt[0] - filter.getYaw()) > 1.0 || abs(azAlt[1] + filter.getPitch()) > 1.0) {
           azAlt[0] = filter.getYaw();
           azAlt[1] = -filter.getPitch();
-          azCharacteristic.setValue((unsigned char *)azAlt, DATA_LENGTH);  
+          noInterrupts();
+          azCharacteristic.setValue((unsigned char *)azAlt, DATA_LENGTH);
+          interrupts();
         }
         
         // Increment previous time, so we keep proper pace
