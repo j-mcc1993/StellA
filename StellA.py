@@ -2,6 +2,7 @@
 import asyncio
 import aioconsole
 import platform
+import re
 import requests
 import serial
 import struct
@@ -18,7 +19,7 @@ rad       = pi/180.0
 deg       = 180.0/pi
 brkpt     = 4
 brkpt2    = 8
-north     = 37.385050 
+polaris   = [180.4028, 36.8355]
 delay     = 60.0
 tol_az    = .001
 tol_al    = .0005
@@ -26,7 +27,7 @@ az_off    = 0.0
 al_off    = 0.0
 
 # Position vector
-azAlt = {'az' : pi, 'alt' : north*rad}
+azAlt = {'az' : polaris[0]*rad, 'alt' : polaris[1]*rad}
 
 # Exit
 async def exit():
@@ -46,18 +47,33 @@ def getTHD(data):
           str(hum) + "%    Dewpoint: " + str(dew) + "F")
           
 
-    
+# Get current az/alt values in degrees
+def getAzAltDeg():
+    print("Azimuth: " + 
+          str(azAlt['az']*deg) + 
+          "     Altitude: " +
+          str(azAlt['alt']*deg))
+
+# Get current az/alt values in radians
+def getAzAltRad():
+    print("Azimuth: " + 
+          str(azAlt['az']) + 
+          "     Altitude: " +
+          str(azAlt['alt']))
+
 # Reset offsets
-def calibrate():
+async def calibrate():
     # Offsets
     global az_off
     global al_off
 
-    # Calculate offset from polaris
-    print("Calculating calibration offsets from Polaris...")
+    print("Calculating offsets from current view...")
+    r = requests.get("http://localhost:8090/api/objects/info", data={'format':'json'})
+    view = {'az' : -r.json()['azimuth']*rad, 'alt' : r.json()['altitude']*rad}
 
-    az_off = azAlt['az'] - pi
-    al_off = azAlt['alt'] - north*rad
+    az_off += view['az'] - azAlt['az']
+    al_off += view['alt'] - azAlt['alt']
+
 
     print("az_off: " + str(az_off))
     print("al_off: " + str(al_off))
@@ -72,24 +88,27 @@ def notification_handler(sender, data):
     update = False
 
     # Get az and alt and convert to radians
-    az  = round(float(struct.unpack('f', data[:brkpt])[0])*rad + az_off, 4)
-    alt = round(float(struct.unpack('f', data[brkpt:])[0])*rad + al_off, 4)
 
-    # Check for overflow from offset addition
-    if az < 0.0 or az > 360.0:
-        az = az % 360.0
-    if alt > 90.0:
-        alt -= 2*(alt%90.0)
-        
+    az  = round((float(struct.unpack('f', data[:brkpt])[0]) - 360.0)*rad + az_off, 4)
+    alt = round(float(struct.unpack('f', data[brkpt:])[0])*rad + al_off, 4)
 
     # Check if an update is necessary
     if abs(azAlt['az'] - az) > tol_az:
-        update = True
+        # Check for overflow from offset addition
+        if az > 0 or az < -2.0*pi:
+            az = -(-az % (2.0*pi))
         azAlt['az'] = az
-    
-    if abs(azAlt['alt'] - alt) > tol_al:
         update = True
+
+    if abs(azAlt['alt'] - alt) > tol_al:
+        # Check for overflow from offset addition
+        if alt > pi/2.0:
+            alt -= 2*(alt%(pi/2.0))
+            azAlt['az'] -= pi
+            if azAlt['az'] < -2.0*pi:
+                azAlt['az'] = -(-azAlt['az'] % (2.0*pi))
         azAlt['alt'] = alt
+        update = True
 
     # Update Stellarium view
     if update:
@@ -113,11 +132,18 @@ async def get_azAlt(dev_uuid: str, loop: asyncio.AbstractEventLoop):
             x = x.lower()
 
             if x == 'c' or x == "calibrate":
-                calibrate()
+                await calibrate()
 
             if x == 't' or x == "temperature":
                 tmp = await client.read_gatt_char(thd_uuid)
                 getTHD(tmp)
+
+            if x == 'g' or x == "get az/alt":
+                selection = await aioconsole.ainput("Radians or Degrees (R/D)?: ")
+                if selection == 'R' or selection == 'r':
+                    getAzAltRad()
+                else:
+                    getAzAltDeg()
 
 
 try:
