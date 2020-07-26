@@ -29,10 +29,6 @@ al_off    = 0.0
 # Position vector
 azAlt = {'az' : polaris[0]*rad, 'alt' : polaris[1]*rad}
 
-# Exit
-async def exit():
-    x = await aioconsole.ainput(">>> ")
-
 # Get temperature, humidity and dewpoint
 def getTHD(data):
     print("Getting temperature data...")
@@ -144,6 +140,10 @@ async def get_azAlt(dev_uuid: str, loop: asyncio.AbstractEventLoop):
                     getAzAltRad()
                 else:
                     getAzAltDeg()
+
+            if x == 'q' or x == 'quit':
+                loop.stop()
+                break
 
 
 try:
