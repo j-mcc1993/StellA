@@ -1,5 +1,5 @@
 /* 
- *  Author: James McCullough (with code from Kris Winer)
+ *  Authors: Kris Winer (original sketch here: https://github.com/kriswiner/LSM9DS1/commit/4c35dd7b5c2a470bcc0ec913ce7a54a56ae4ee8b) & James McCullough
  *  Date: 07.20.2020
  *  Description: This code interacts with the LSM9DS1 IMU chip
  *  on the Nano 33 BLE board to implement the Madgwick algorithm
